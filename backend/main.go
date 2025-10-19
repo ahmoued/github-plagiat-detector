@@ -61,7 +61,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	maxResults := 50
-    candidateRepos, err := searchgithub.SearchRepos(keywords, maxResults, "")
+    candidateRepos, err := searchgithub.SearchRepos(client, keywords, maxResults, "")
     if err != nil {
         http.Error(w, "GitHub search failed", http.StatusInternalServerError)
         return

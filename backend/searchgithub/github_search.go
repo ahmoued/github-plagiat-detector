@@ -19,7 +19,7 @@ type RepoInfo struct {
 
 func SearchRepos(client *github.Client, keywords []string, maxResults int, token string) ([]RepoInfo, error) {
     ctx := context.Background()
-    //var client *github.Client
+    /*var client *github.Client
     if token != "" {
         ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
         tc := oauth2.NewClient(ctx, ts)
@@ -27,7 +27,7 @@ func SearchRepos(client *github.Client, keywords []string, maxResults int, token
     } else {
         client = github.NewClient(nil)
     }
-
+*/ 
 
 
     query := strings.Join(keywords, " ") + " in:name,description"
@@ -56,14 +56,14 @@ func SearchRepos(client *github.Client, keywords []string, maxResults int, token
 
 func FetchReadmes(client *github.Client, repos []RepoInfo, token string) map[string]string {
     ctx := context.Background()
-    /*var client *github.Client*/
+    /*var client *github.Client
     if token != "" {
         ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
         tc := oauth2.NewClient(ctx, ts)
         client = github.NewClient(tc)
     } else {
         client = github.NewClient(nil)
-    }
+    }*/
 
     results := make(map[string]string)
     var mu sync.Mutex
@@ -89,4 +89,38 @@ func FetchReadmes(client *github.Client, repos []RepoInfo, token string) map[str
 
     wg.Wait()
     return results
+}
+
+
+
+func GetRepoWithReadme(ctx context.Context, client *github.Client, owner, name string) (*github.Repository, string, error) {
+    repo, _, err := client.Repositories.Get(ctx, owner, name)
+    if err != nil {
+        return nil, "", err
+    }
+
+    file, _, err := client.Repositories.GetReadme(ctx, owner, name, nil)
+    if err != nil {
+        return repo, "", nil
+    }
+
+    content, err := file.GetContent()
+    if err != nil {
+        return repo, "", err
+    }
+
+    return repo, content, nil
+}
+
+
+func NewClient(token string) *github.Client {
+    ctx := context.Background()
+
+    if token != "" {
+        ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+        tc := oauth2.NewClient(ctx, ts)
+        return github.NewClient(tc)
+    }
+
+    return github.NewClient(nil)
 }
