@@ -17,9 +17,9 @@ type RepoInfo struct {
     CloneURL string
 }
 
-func SearchRepos(keywords []string, maxResults int, token string) ([]RepoInfo, error) {
+func SearchRepos(client *github.Client, keywords []string, maxResults int, token string) ([]RepoInfo, error) {
     ctx := context.Background()
-    var client *github.Client
+    //var client *github.Client
     if token != "" {
         ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
         tc := oauth2.NewClient(ctx, ts)
@@ -54,9 +54,9 @@ func SearchRepos(keywords []string, maxResults int, token string) ([]RepoInfo, e
     return repos, nil
 }
 
-func FetchReadmes(repos []RepoInfo, token string) map[string]string {
+func FetchReadmes(client *github.Client, repos []RepoInfo, token string) map[string]string {
     ctx := context.Background()
-    var client *github.Client
+    /*var client *github.Client*/
     if token != "" {
         ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
         tc := oauth2.NewClient(ctx, ts)

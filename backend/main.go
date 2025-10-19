@@ -1,20 +1,19 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
+    "context"
+    "encoding/json"
+    "log"
+    "net/http"
+    "strings"
 
-	"github.com/google/go-github/v55/github"
-	"github.com/gorilla/mux"
-	"github.com/rs/cors"
-	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
+    "github.com/ahmoued/github-plagiarism-backend/searchgithub"
     "github.com/ahmoued/github-plagiarism-backend/utils"
     "github.com/ahmoued/github-plagiarism-backend/clone"
-    //"github.com/ahmoued/github-plagiarism-backend/compare"
+    "github.com/ahmoued/github-plagiarism-backend/compare"
+
+    "github.com/gorilla/mux"
+    "github.com/rs/cors"
 )
 
 type CompareRequest struct {
@@ -22,15 +21,13 @@ type CompareRequest struct {
 }
 
 type CompareResponse struct {
-    FilteredRepos []string `json:"filtered_repos"`
+    Results []compare.CompareResult `json:"results"`
 }
-
 
 func compareHandler(w http.ResponseWriter, r *http.Request) {
 
-
-
-	var req CompareRequest
+	
+    var req CompareRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
         http.Error(w, "Invalid request", http.StatusBadRequest)
         return
@@ -46,30 +43,21 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     repoName := parts[len(parts)-1]
 
 
-
 	ctx := context.Background()
-    client := github.NewClient(nil)
-    repo, _, err := client.Repositories.Get(ctx, owner, repoName)
+    client := searchgithub.NewClient("")
+    repo, readmeContent, err := searchgithub.GetRepoWithReadme(ctx, client, owner, repoName)
     if err != nil {
         http.Error(w, "Failed to fetch repo info", http.StatusInternalServerError)
         return
     }
 
-    readmeFile, _, err := client.Repositories.GetReadme(ctx, owner, repoName, nil)
-    var readmeContent string
-    if err == nil {
-        readmeContent, _ = readmeFile.GetContent()
-    }
-
     inputText := repo.GetName() + " " + repo.GetDescription() + " " + readmeContent
-
 
 
 	keywords := utils.ExtractKeywordsFromText(inputText)
     if len(keywords) == 0 {
         keywords = []string{repo.GetName()} 
     }
-
 
 
 	maxResults := 50
@@ -80,15 +68,11 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     }
 
 
-
-	readmes := searchgithub.FetchReadmes(candidateRepos, "")
-
-
+	readmes := searchgithub.FetchReadmes(client, candidateRepos, "")
 
 
 	minOverlap := 2
     filteredRepoKeys := utils.FilterReposByReadme(readmes, keywords, minOverlap)
-
 
 
 	filteredRepos := []searchgithub.RepoInfo{}
@@ -103,32 +87,38 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     }
 
 
-
-	clonedPaths := clone.CloneRepos(filteredRepos) 
-	fmt.Println(clonedPaths)
+	clonedResults := clone.CloneRepos(filteredRepos)
 
 
-
-	filteredNames := []string{}
-    for _, r := range filteredRepos {
-        filteredNames = append(filteredNames, r.Owner+"/"+r.Name)
+	inputClone := clone.DownloadResult{
+        Name:     repo.GetName(),
+        LocalDir: "./tmp/input_repo", 
     }
 
-    resp := CompareResponse{
-        FilteredRepos: filteredNames,
+	inputCode, _ := compare.ReadCodeFiles(inputClone.LocalDir)
+    results := []compare.CompareResult{}
+    for _, c := range clonedResults {
+        code, _ := compare.ReadCodeFiles(c.LocalDir)
+        sim := compare.ComputeSimilarity(inputCode, code)
+        results = append(results, compare.CompareResult{
+            Repo:       c.Name,
+            Similarity: sim,
+        })
+    }
+
+
+	resp := CompareResponse{
+        Results: results,
     }
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(resp)
 }
 
-
 func main() {
     r := mux.NewRouter()
     r.HandleFunc("/compare", compareHandler).Methods("POST")
 
-
-
-	handler := cors.AllowAll().Handler(r)
+    handler := cors.AllowAll().Handler(r)
 
     log.Println("Server running on http://localhost:8080")
     log.Fatal(http.ListenAndServe(":8080", handler))
