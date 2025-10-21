@@ -20,7 +20,7 @@ func ReadCodeFiles(path string) (string, error) {
             return err
         }
         ext := filepath.Ext(p)
-        if ext == ".go" || ext == ".js" || ext == ".ts" {
+        if ext == ".go" || ext == ".js" || ext == ".ts" || ext == ".py" || ext == ".vue"{
             data, err := os.ReadFile(p)
             if err != nil {
                 return err

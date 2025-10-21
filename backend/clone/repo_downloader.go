@@ -37,3 +37,19 @@ func CloneRepos(repos []searchgithub.RepoInfo) []DownloadResult {
     wg.Wait()
     return results
 }
+
+func CloneInputRepo(repo searchgithub.RepoInfo) DownloadResult {
+        
+        
+            
+            localDir := "./tmp/input_repo"
+            cmd := exec.Command("git", "clone", "--depth", "1", repo.CloneURL, localDir)
+            err := cmd.Run()
+            return DownloadResult{
+                Name:     repo.Name,
+                LocalDir: localDir,
+                Err:      err,
+            }
+        
+    }
+

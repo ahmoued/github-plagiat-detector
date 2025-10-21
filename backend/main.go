@@ -1,19 +1,21 @@
 package main
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "net/http"
-    "strings"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"strings"
 
-    "github.com/ahmoued/github-plagiarism-backend/searchgithub"
-    "github.com/ahmoued/github-plagiarism-backend/utils"
-    "github.com/ahmoued/github-plagiarism-backend/clone"
-    "github.com/ahmoued/github-plagiarism-backend/compare"
+	"github.com/ahmoued/github-plagiarism-backend/clone"
+	"github.com/ahmoued/github-plagiarism-backend/compare"
+	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
+	"github.com/ahmoued/github-plagiarism-backend/utils"
 
-    "github.com/gorilla/mux"
-    "github.com/rs/cors"
+	"github.com/gorilla/mux"
+	"github.com/rs/cors"
 )
 
 type CompareRequest struct {
@@ -44,7 +46,9 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	ctx := context.Background()
-    client := searchgithub.NewClient("")
+    token := os.Getenv("GITHUB_TOKEN")
+    fmt.Println(token)
+    client := searchgithub.NewClient(token)
     repo, readmeContent, err := searchgithub.GetRepoWithReadme(ctx, client, owner, repoName)
     if err != nil {
         http.Error(w, "Failed to fetch repo info", http.StatusInternalServerError)
@@ -55,13 +59,14 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	keywords := utils.ExtractKeywordsFromText(inputText)
+    keys := []string{"game", "quiz", "realtime"}
     if len(keywords) == 0 {
         keywords = []string{repo.GetName()} 
     }
 
 
-	maxResults := 50
-    candidateRepos, err := searchgithub.SearchRepos(client, keywords, maxResults, "")
+	maxResults := 4
+    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults)
     if err != nil {
         http.Error(w, "GitHub search failed", http.StatusInternalServerError)
         return
@@ -87,7 +92,9 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     }
 
 
-	clonedResults := clone.CloneRepos(filteredRepos)
+	//clonedResults := clone.CloneRepos(filteredRepos)
+	clonedResults := clone.CloneRepos(candidateRepos)
+
 
 
 	inputClone := clone.DownloadResult{
@@ -95,10 +102,16 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
         LocalDir: "./tmp/input_repo", 
     }
 
+    inputClone = clone.CloneInputRepo(searchgithub.RepoInfo{Owner: owner, Name: repoName, CloneURL: req.RepoURL})
+
 	inputCode, _ := compare.ReadCodeFiles(inputClone.LocalDir)
+    inputLines := strings.SplitN(inputCode, "\n", 2)
+fmt.Println("INPUT first line:", inputLines[0])
     results := []compare.CompareResult{}
     for _, c := range clonedResults {
         code, _ := compare.ReadCodeFiles(c.LocalDir)
+         codeLines := strings.SplitN(code, "\n", 2)
+    fmt.Printf("COMPARE %s first line: %s\n", c.Name, codeLines[0])
         sim := compare.ComputeSimilarity(inputCode, code)
         results = append(results, compare.CompareResult{
             Repo:       c.Name,
