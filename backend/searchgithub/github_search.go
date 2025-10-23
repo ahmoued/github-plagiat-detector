@@ -24,9 +24,8 @@ type RepoInfo struct {
 	found := make(map[string]RepoInfo)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	resultsCh := make(chan RepoInfo, maxResults*len(keywords)) // buffered channel
+	resultsCh := make(chan RepoInfo, maxResults*len(keywords)) 
 
-	// Helper to generate all subsets of size n
 	subsets := func(words []string, n int) [][]string {
 		if n > len(words) {
 			return nil
@@ -48,13 +47,12 @@ type RepoInfo struct {
 		return res
 	}
 
-	// Worker function for each keyword subset
-	sem := make(chan struct{}, 5) // max 5 concurrent requests
+	sem := make(chan struct{}, 5) 
 
     searchWorker := func(subset []string) {
         defer wg.Done()
-        sem <- struct{}{}           // acquire
-        defer func() { <-sem }()   // release after finishing
+        sem <- struct{}{}           
+        defer func() { <-sem }() 
         time.Sleep(2 * time.Second)
 
         query := strings.Join(subset, " ") + " in:name,description,readme"
@@ -75,7 +73,6 @@ type RepoInfo struct {
     }
 
 
-	// Launch goroutines for all subsets
 	for k := len(keywords); k >= 3; k-- {
 		for _, subset := range subsets(keywords, k) {
 			wg.Add(1)
@@ -83,13 +80,11 @@ type RepoInfo struct {
 		}
 	}
 
-	// Close channel once all goroutines are done
 	go func() {
 		wg.Wait()
 		close(resultsCh)
 	}()
 
-	// Collect results and deduplicate
 	for r := range resultsCh {
 		key := r.Owner + "/" + r.Name
 		mu.Lock()
@@ -99,7 +94,6 @@ type RepoInfo struct {
 		mu.Unlock()
 	}
 
-	// Convert map to slice
 	repos := make([]RepoInfo, 0, len(found))
 	for _, r := range found {
 		repos = append(repos, r)

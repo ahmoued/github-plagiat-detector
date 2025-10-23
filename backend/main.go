@@ -8,12 +8,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/ahmoued/github-plagiarism-backend/clone"
 	"github.com/ahmoued/github-plagiarism-backend/compare"
 	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
 	"github.com/ahmoued/github-plagiarism-backend/utils"
-
+	"github.com/ahmoued/github-plagiarism-backend/metrics"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -23,7 +24,7 @@ type CompareRequest struct {
 }
 
 type CompareResponse struct {
-    Results []compare.CompareResult `json:"results"`
+    Results []compare.CompareResultWithMetrics `json:"results"`
 }
 
 func compareHandler(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +60,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	keywords := utils.ExtractKeywordsFromText(inputText)
-    keys := []string{"game", "quiz", "realtime"}
+    keys := []string{"collaboration", "tool", "doc"}
     if len(keywords) == 0 {
         keywords = []string{repo.GetName()} 
     }
@@ -92,7 +93,6 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     }
 
 
-	//clonedResults := clone.CloneRepos(filteredRepos)
 	clonedResults := clone.CloneRepos(candidateRepos)
 
 
@@ -104,25 +104,70 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
     inputClone = clone.CloneInputRepo(searchgithub.RepoInfo{Owner: owner, Name: repoName, CloneURL: req.RepoURL})
 
-	inputCode, _ := compare.ReadCodeFiles(inputClone.LocalDir)
-    inputLines := strings.SplitN(inputCode, "\n", 2)
-fmt.Println("INPUT first line:", inputLines[0])
-    results := []compare.CompareResult{}
-    for _, c := range clonedResults {
-        code, _ := compare.ReadCodeFiles(c.LocalDir)
-         codeLines := strings.SplitN(code, "\n", 2)
-    fmt.Printf("COMPARE %s first line: %s\n", c.Name, codeLines[0])
-        sim := compare.ComputeSimilarity(inputCode, code)
-        results = append(results, compare.CompareResult{
-            Repo:       c.Name,
-            Similarity: sim,
+
+    results, clonedMetrics, inputMetrics, err := compare.CompareReposCode(inputClone.LocalDir, clonedResults)
+    if err!= nil{
+        fmt.Println(err.Error())
+        http.Error(w, "Error comparing repos", http.StatusInternalServerError)
+        return
+    }
+    fmt.Println(clonedMetrics)
+    fmt.Println(inputMetrics)
+   
+
+    var wg sync.WaitGroup
+    metricResultsChan := make(chan compare.CompareResult, len(clonedMetrics))
+    for _, c := range clonedMetrics{
+        wg.Add(1)
+        go func(repoName string, candidate metrics.Metrics) {
+            defer wg.Done()
+            sim := metrics.ComputeMetricsSimilarity(inputMetrics, candidate)
+            metricResultsChan <- compare.CompareResult{
+                Repo:       repoName,
+                Similarity: sim,
+            }
+        }(c.RepoName, c.Metrics)
+    }
+
+    wg.Wait()
+    close(metricResultsChan)
+
+    var metricResults []compare.CompareResult
+    for r := range metricResultsChan {
+        metricResults = append(metricResults, r)
+    }
+
+    fmt.Println("Metric-based similarities:")
+    for _, r := range metricResults {
+        fmt.Printf("%s → %.2f%%\n", r.Repo, r.Similarity)
+    }
+
+
+    combinedResults := []compare.CompareResultWithMetrics{}
+    for _, r := range results {
+
+        var metricSim float64
+        for _, m := range metricResults {
+            if m.Repo == r.Repo {
+                metricSim = m.Similarity
+                break
+            }
+        }
+        combinedResults = append(combinedResults, compare.CompareResultWithMetrics{
+            Repo:       r.Repo,
+            TokenSimilarity:  r.Similarity,
+            MetricsSimilarity: metricSim,
         })
     }
 
+    fmt.Println("combined Results")
+    fmt.Println(combinedResults)
+    
 
 	resp := CompareResponse{
-        Results: results,
+        Results: combinedResults,
     }
+    fmt.Println(resp)
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(resp)
 }
