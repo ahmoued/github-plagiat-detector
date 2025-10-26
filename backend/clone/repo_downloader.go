@@ -2,9 +2,11 @@ package clone
 
 import (
     "fmt"
+    "io/fs"
     "os/exec"
     "sync"
     "github.com/ahmoued/github-plagiarism-backend/searchgithub"
+    "path/filepath"
 )
 
 type DownloadResult struct {
@@ -37,6 +39,25 @@ func CloneRepos(repos []searchgithub.RepoInfo) []DownloadResult {
     wg.Wait()
     return results
 }
+
+func DirSize(path string) (int64, error) {
+    var size int64
+    err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+        if err != nil {
+            return err
+        }
+        if !d.IsDir() {
+            info, err := d.Info()
+            if err != nil {
+                return err
+            }
+            size += info.Size()
+        }
+        return nil
+    })
+    return size, err
+}
+
 
 func CloneInputRepo(repo searchgithub.RepoInfo) DownloadResult {
         

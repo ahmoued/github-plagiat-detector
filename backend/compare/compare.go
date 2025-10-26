@@ -23,6 +23,8 @@ type CompareResultWithMetrics struct {
     Repo       string  `json:"repo"`
     TokenSimilarity float64 `json:"similarity"`
     MetricsSimilarity float64 `json:"metrics_similarity"`
+    ASTSimilarity float64 `json:"ast_similarity"`
+
 }
 
 

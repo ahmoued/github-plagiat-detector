@@ -7,14 +7,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 
 	"github.com/ahmoued/github-plagiarism-backend/clone"
 	"github.com/ahmoued/github-plagiarism-backend/compare"
+	"github.com/ahmoued/github-plagiarism-backend/metrics"
 	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
 	"github.com/ahmoued/github-plagiarism-backend/utils"
-	"github.com/ahmoued/github-plagiarism-backend/metrics"
+	"github.com/ahmoued/github-plagiarism-backend/astcompare"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -60,14 +62,28 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	keywords := utils.ExtractKeywordsFromText(inputText)
-    keys := []string{"collaboration", "tool", "doc"}
+    keys := []string{"collaboration", "tool", "docs", "document", "realtime"}
     if len(keywords) == 0 {
         keywords = []string{repo.GetName()} 
     }
 
 
-	maxResults := 4
-    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults)
+	inputClone := clone.DownloadResult{
+        Name:     repo.GetName(),
+        LocalDir: "./tmp/input_repo", 
+    }
+
+    inputClone = clone.CloneInputRepo(searchgithub.RepoInfo{Owner: owner, Name: repoName, CloneURL: req.RepoURL})
+    size, err := clone.DirSize(inputClone.LocalDir)
+    if err != nil {
+        fmt.Println(err.Error())
+    }
+    
+    fmt.Println("the size is")
+    fmt.Println(size)
+    
+    maxResults := 4
+    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults, size)
     if err != nil {
         http.Error(w, "GitHub search failed", http.StatusInternalServerError)
         return
@@ -94,15 +110,10 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	clonedResults := clone.CloneRepos(candidateRepos)
+    
 
 
-
-	inputClone := clone.DownloadResult{
-        Name:     repo.GetName(),
-        LocalDir: "./tmp/input_repo", 
-    }
-
-    inputClone = clone.CloneInputRepo(searchgithub.RepoInfo{Owner: owner, Name: repoName, CloneURL: req.RepoURL})
+	
 
 
     results, clonedMetrics, inputMetrics, err := compare.CompareReposCode(inputClone.LocalDir, clonedResults)
@@ -145,7 +156,6 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
     combinedResults := []compare.CompareResultWithMetrics{}
     for _, r := range results {
-
         var metricSim float64
         for _, m := range metricResults {
             if m.Repo == r.Repo {
@@ -154,30 +164,65 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
             }
         }
         combinedResults = append(combinedResults, compare.CompareResultWithMetrics{
-            Repo:       r.Repo,
-            TokenSimilarity:  r.Similarity,
+            Repo:              r.Repo,
+            TokenSimilarity:   r.Similarity,
             MetricsSimilarity: metricSim,
+            ASTSimilarity:     -1.0, // Default: not computed
         })
     }
 
-    fmt.Println("combined Results")
-    fmt.Println(combinedResults)
-    
+    // Sort by metric similarity to select top repos for AST
+    sort.Slice(combinedResults, func(i, j int) bool {
+        return combinedResults[i].MetricsSimilarity > combinedResults[j].MetricsSimilarity
+    })
 
-	resp := CompareResponse{
+    // Select top 3 repos (or fewer if not enough)
+    topResults := 3
+    if len(combinedResults) < topResults {
+        topResults = len(combinedResults)
+    }
+    topNames := make(map[string]bool)
+    for i := 0; i < topResults; i++ {
+        topNames[combinedResults[i].Repo] = true
+    }
+
+    // Filter clonedResults to only top repos
+    var topCloned []clone.DownloadResult
+    for _, c := range clonedResults {
+        if topNames[c.Name] {
+            topCloned = append(topCloned, c)
+        }
+    }
+
+    // Run FULL AST comparison on top repos
+    var astResults []astcompare.Result
+    if len(topCloned) > 0 {
+        var err error
+        astResults, err = astcompare.CompareReposFull(inputClone.LocalDir, topCloned)
+        if err != nil {
+            log.Printf("AST comparison failed: %v", err)
+            astResults = []astcompare.Result{}
+        }
+    }
+
+    // Update AST similarity for top repos (others remain -1.0)
+    astMap := make(map[string]float64)
+    for _, r := range astResults {
+        astMap[r.RepoName] = r.Similarity
+    }
+    for i := range combinedResults {
+        if sim, exists := astMap[combinedResults[i].Repo]; exists {
+            combinedResults[i].ASTSimilarity = sim
+        }
+        // else remains -1.0
+    }
+
+    fmt.Println("Combined Results")
+    fmt.Println(combinedResults)
+
+    resp := CompareResponse{
         Results: combinedResults,
     }
     fmt.Println(resp)
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(resp)
-}
-
-func main() {
-    r := mux.NewRouter()
-    r.HandleFunc("/compare", compareHandler).Methods("POST")
-
-    handler := cors.AllowAll().Handler(r)
-
-    log.Println("Server running on http://localhost:8080")
-    log.Fatal(http.ListenAndServe(":8080", handler))
-}
