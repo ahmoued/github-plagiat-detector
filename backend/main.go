@@ -16,7 +16,7 @@ import (
 	"github.com/ahmoued/github-plagiarism-backend/metrics"
 	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
 	"github.com/ahmoued/github-plagiarism-backend/utils"
-	"github.com/ahmoued/github-plagiarism-backend/astcompare"
+	"github.com/ahmoued/github-plagiarism-backend/ast"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -62,7 +62,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 
 	keywords := utils.ExtractKeywordsFromText(inputText)
-    keys := []string{"collaboration", "tool", "docs", "document", "realtime"}
+    keys := []string{"tool", "go"}
     if len(keywords) == 0 {
         keywords = []string{repo.GetName()} 
     }
@@ -171,51 +171,25 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
         })
     }
 
+    // Compute AST similarity for Go repos
+    for i, _ := range combinedResults {
+        inputNodes, _ := ast.ExtractNodeTypesFromDir(inputClone.LocalDir)
+        candNodes, _ := ast.ExtractNodeTypesFromDir(clonedResults[i].LocalDir)
+
+        sim := ast.WeightedJaccard(inputNodes, candNodes)
+        combinedResults[i].ASTSimilarity = sim*100
+        fmt.Printf("AST similarity %s: %.2f%%\n", combinedResults[i].Repo, sim*100)
+    }
+
+
+
+
     // Sort by metric similarity to select top repos for AST
     sort.Slice(combinedResults, func(i, j int) bool {
         return combinedResults[i].MetricsSimilarity > combinedResults[j].MetricsSimilarity
     })
 
-    // Select top 3 repos (or fewer if not enough)
-    topResults := 3
-    if len(combinedResults) < topResults {
-        topResults = len(combinedResults)
-    }
-    topNames := make(map[string]bool)
-    for i := 0; i < topResults; i++ {
-        topNames[combinedResults[i].Repo] = true
-    }
-
-    // Filter clonedResults to only top repos
-    var topCloned []clone.DownloadResult
-    for _, c := range clonedResults {
-        if topNames[c.Name] {
-            topCloned = append(topCloned, c)
-        }
-    }
-
-    // Run FULL AST comparison on top repos
-    var astResults []astcompare.Result
-    if len(topCloned) > 0 {
-        var err error
-        astResults, err = astcompare.CompareReposFull(inputClone.LocalDir, topCloned)
-        if err != nil {
-            log.Printf("AST comparison failed: %v", err)
-            astResults = []astcompare.Result{}
-        }
-    }
-
-    // Update AST similarity for top repos (others remain -1.0)
-    astMap := make(map[string]float64)
-    for _, r := range astResults {
-        astMap[r.RepoName] = r.Similarity
-    }
-    for i := range combinedResults {
-        if sim, exists := astMap[combinedResults[i].Repo]; exists {
-            combinedResults[i].ASTSimilarity = sim
-        }
-        // else remains -1.0
-    }
+    
 
     fmt.Println("Combined Results")
     fmt.Println(combinedResults)
@@ -226,3 +200,13 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Println(resp)
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(resp)
+}
+    func main() {
+    r := mux.NewRouter()
+    r.HandleFunc("/compare", compareHandler).Methods("POST")
+
+    handler := cors.AllowAll().Handler(r)
+
+    log.Println("Server running on http://localhost:8080")
+    log.Fatal(http.ListenAndServe(":8080", handler))
+}
