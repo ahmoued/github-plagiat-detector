@@ -78,12 +78,21 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     if err != nil {
         fmt.Println(err.Error())
     }
+
+    matches, err := utils.ExtractFunctionalKeywords(inputText, inputClone.LocalDir, 9)
+    if err != nil {
+        fmt.Println(err.Error())
+    }
+    fmt.Println("and the matches areee")
+    fmt.Println(matches)
+
+    inputLanguage := utils.DetectLanguage(inputClone.LocalDir)
     
     fmt.Println("the size is")
     fmt.Println(size)
     
     maxResults := 4
-    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults, size)
+    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults, size, inputLanguage)
     if err != nil {
         http.Error(w, "GitHub search failed", http.StatusInternalServerError)
         return

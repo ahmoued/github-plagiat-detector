@@ -107,7 +107,7 @@ type RepoInfo struct {
 */
 
 
-func SearchRepos(client *github.Client, keywords []string, maxResults int, size int64) ([]RepoInfo, error) {
+func SearchRepos(client *github.Client, keywords []string, maxResults int, size int64, lang string) ([]RepoInfo, error) {
     ctx := context.Background()
     /*var client *github.Client
     if token != "" {
@@ -120,7 +120,7 @@ func SearchRepos(client *github.Client, keywords []string, maxResults int, size 
 */ 
 
 
-    query := strings.Join(keywords, " ") + " in:name,description,readme"
+    query := fmt.Sprintf("%s language:%s in:name,description,readme", strings.Join(keywords, " "), lang)
 
     if size > 0 {
         sizeKB := size / 1024
