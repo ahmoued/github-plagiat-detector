@@ -3,11 +3,7 @@ package searchgithub
 import (
 	"context"
 	"fmt"
-	//"time"
-
-	"strings"
-
-	"github.com/google/go-github/v55/github"
+    "github.com/google/go-github/v55/github"
 	"golang.org/x/oauth2"
 
 	"sync"
@@ -18,116 +14,23 @@ type RepoInfo struct {
     Name     string
     CloneURL string
 }
-
-/*func ProgressiveSearch(client *github.Client, keywords []string, maxResults int) ([]RepoInfo, error) {
-	ctx := context.Background()
-	found := make(map[string]RepoInfo)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	resultsCh := make(chan RepoInfo, maxResults*len(keywords)) 
-
-	subsets := func(words []string, n int) [][]string {
-		if n > len(words) {
-			return nil
-		}
-		var res [][]string
-		var helper func(start int, path []string)
-		helper = func(start int, path []string) {
-			if len(path) == n {
-				tmp := make([]string, n)
-				copy(tmp, path)
-				res = append(res, tmp)
-				return
-			}
-			for i := start; i < len(words); i++ {
-				helper(i+1, append(path, words[i]))
-			}
-		}
-		helper(0, []string{})
-		return res
-	}
-
-	sem := make(chan struct{}, 5) 
-
-    searchWorker := func(subset []string) {
-        defer wg.Done()
-        sem <- struct{}{}           
-        defer func() { <-sem }() 
-        time.Sleep(2 * time.Second)
-
-        query := strings.Join(subset, " ") + " in:name,description,readme"
-        opts := &github.SearchOptions{Sort: "stars", Order: "desc", ListOptions: github.ListOptions{PerPage: 50}}
-        result, _, err := client.Search.Repositories(ctx, query, opts)
-        if err != nil {
-            fmt.Println("GitHub search error:", err)
-            return
-        }
-
-        for _, r := range result.Repositories {
-            resultsCh <- RepoInfo{
-                Owner:    r.GetOwner().GetLogin(),
-                Name:     r.GetName(),
-                CloneURL: r.GetCloneURL(),
-            }
-        }
-    }
+ 
 
 
-	for k := len(keywords); k >= 3; k-- {
-		for _, subset := range subsets(keywords, k) {
-			wg.Add(1)
-			go searchWorker(subset)
-		}
-	}
 
-	go func() {
-		wg.Wait()
-		close(resultsCh)
-	}()
-
-	for r := range resultsCh {
-		key := r.Owner + "/" + r.Name
-		mu.Lock()
-		if _, exists := found[key]; !exists && len(found) < maxResults {
-			found[key] = r
-		}
-		mu.Unlock()
-	}
-
-	repos := make([]RepoInfo, 0, len(found))
-	for _, r := range found {
-		repos = append(repos, r)
-        fmt.Println(r.Name)
-	}
-        fmt.Println(repos)
-        fmt.Println(len(repos))
-
-	return repos, nil
-}
-*/
-
-
-func SearchRepos(client *github.Client, keywords []string, maxResults int, size int64, lang string) ([]RepoInfo, error) {
+func SearchRepos(client *github.Client, keywords []string, maxResults int, size int, lang string) ([]RepoInfo, error) {
     ctx := context.Background()
-    /*var client *github.Client
-    if token != "" {
-        ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-        tc := oauth2.NewClient(ctx, ts)
-        client = github.NewClient(tc)
-    } else {
-        client = github.NewClient(nil)
-    }
-*/ 
+    
 
-
-    query := fmt.Sprintf("%s language:%s in:name,description,readme", strings.Join(keywords, " "), lang)
+    queryLogic := fmt.Sprintf("(%s OR %s) (%s OR %s) (%s OR %s) OR %s OR %s", keywords[0], keywords[1], keywords[2], keywords[3], keywords[4], keywords[5], keywords[6], keywords[7])
+    query := fmt.Sprintf("%s language:%s in:name,description,readme", queryLogic, lang)
 
     if size > 0 {
-        sizeKB := size / 1024
-        minSize := int(sizeKB * 8 / 10)  // -20%
-        maxSize := int(sizeKB * 12 / 10) // +20%
+        minSize := int(size * 8 / 10)
+        maxSize := int(size * 12 / 10)
         query += fmt.Sprintf(" size:%d..%d", minSize, maxSize)
     }
+    fmt.Println(query)
 
     opts := &github.SearchOptions{Order: "desc", ListOptions: github.ListOptions{PerPage: maxResults}}
 
@@ -193,28 +96,31 @@ func FetchReadmes(client *github.Client, repos []RepoInfo, token string) map[str
 
 
 
-func GetRepoWithReadme(ctx context.Context, client *github.Client, owner, name string) (*github.Repository, string, error) {
+func GetRepoWithReadme(ctx context.Context, client *github.Client, owner, name string) (*github.Repository, string, int, error) {
     fmt.Println("starting to try to get the repo")
     repo, _, err := client.Repositories.Get(ctx, owner, name)
     fmt.Println("trying to get the repo")
     if err != nil {
-        return nil, "", err
+        return nil, "", 0, err
     }
+    size := repo.GetSize()
+    fmt.Println("official github size")
+    fmt.Println(size)
     fmt.Println("got the repo")
 
     file, _, err := client.Repositories.GetReadme(ctx, owner, name, nil)
     if err != nil {
-        return repo, "", nil
+        return repo, "", size, nil
     }
     fmt.Println("got the readme")
 
     content, err := file.GetContent()
     if err != nil {
-        return repo, "", err
+        return repo, "", size, err
     }
     fmt.Println("got the content")
 
-    return repo, content, nil
+    return repo, content, size, nil
 }
 
 

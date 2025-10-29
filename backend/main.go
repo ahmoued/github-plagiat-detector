@@ -11,12 +11,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ahmoued/github-plagiarism-backend/ai"
+	"github.com/ahmoued/github-plagiarism-backend/ast"
 	"github.com/ahmoued/github-plagiarism-backend/clone"
 	"github.com/ahmoued/github-plagiarism-backend/compare"
 	"github.com/ahmoued/github-plagiarism-backend/metrics"
 	"github.com/ahmoued/github-plagiarism-backend/searchgithub"
 	"github.com/ahmoued/github-plagiarism-backend/utils"
-	"github.com/ahmoued/github-plagiarism-backend/ast"
 	"github.com/gorilla/mux"
 	"github.com/rs/cors"
 )
@@ -50,22 +51,26 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
     token := os.Getenv("GITHUB_TOKEN")
+    fmt.Println("github token is")
     fmt.Println(token)
     client := searchgithub.NewClient(token)
-    repo, readmeContent, err := searchgithub.GetRepoWithReadme(ctx, client, owner, repoName)
+    repo, readmeContent,size, err := searchgithub.GetRepoWithReadme(ctx, client, owner, repoName)
     if err != nil {
         http.Error(w, "Failed to fetch repo info", http.StatusInternalServerError)
         return
     }
-
-    inputText := repo.GetName() + " " + repo.GetDescription() + " " + readmeContent
-
-
-	keywords := utils.ExtractKeywordsFromText(inputText)
-    keys := []string{"tool", "go"}
-    if len(keywords) == 0 {
-        keywords = []string{repo.GetName()} 
+    APIKEY := os.Getenv("GEMINI_API_KEY")
+    fmt.Println(APIKEY)
+    //inputText := repo.GetName() + " " + repo.GetDescription() + " " + readmeContent
+    keywords, err := ai.GetKeywordsFromGemini(repo.GetName(), repo.GetDescription(), readmeContent, APIKEY)
+    if err != nil {
+        fmt.Println("error is")
+        fmt.Println(err.Error())
     }
+    fmt.Println("the gemini words are")
+    fmt.Println(keywords) 
+
+
 
 
 	inputClone := clone.DownloadResult{
@@ -74,39 +79,45 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     inputClone = clone.CloneInputRepo(searchgithub.RepoInfo{Owner: owner, Name: repoName, CloneURL: req.RepoURL})
-    size, err := clone.DirSize(inputClone.LocalDir)
+    /*size, err := clone.DirSize(inputClone.LocalDir)
     if err != nil {
         fmt.Println(err.Error())
-    }
+    }*/
 
-    matches, err := utils.ExtractFunctionalKeywords(inputText, inputClone.LocalDir, 9)
+    
+
+
+    /*matches, err := utils.ExtractFunctionalKeywords(inputText, inputClone.LocalDir, 9)
     if err != nil {
         fmt.Println(err.Error())
     }
     fmt.Println("and the matches areee")
     fmt.Println(matches)
-
+*/
     inputLanguage := utils.DetectLanguage(inputClone.LocalDir)
     
     fmt.Println("the size is")
     fmt.Println(size)
     
-    maxResults := 4
-    candidateRepos, err := searchgithub.SearchRepos(client, keys, maxResults, size, inputLanguage)
+    maxResults := 20
+    candidateRepos, err := searchgithub.SearchRepos(client, keywords, maxResults, size, inputLanguage)
     if err != nil {
         http.Error(w, "GitHub search failed", http.StatusInternalServerError)
+        fmt.Println(err.Error())
         return
     }
+    fmt.Println("debugging")
+    fmt.Println(candidateRepos)
 
 
-	readmes := searchgithub.FetchReadmes(client, candidateRepos, "")
+	//readmes := searchgithub.FetchReadmes(client, candidateRepos, "")
 
 
-	minOverlap := 2
-    filteredRepoKeys := utils.FilterReposByReadme(readmes, keywords, minOverlap)
+	//minOverlap := 2
+    //filteredRepoKeys := utils.FilterReposByReadme(readmes, keywords, minOverlap)
 
 
-	filteredRepos := []searchgithub.RepoInfo{}
+	/*filteredRepos := []searchgithub.RepoInfo{}
     keySet := make(map[string]struct{})
     for _, key := range filteredRepoKeys {
         keySet[key] = struct{}{}
@@ -115,7 +126,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
         if _, ok := keySet[r.Owner+"/"+r.Name]; ok {
             filteredRepos = append(filteredRepos, r)
         }
-    }
+    }*/
 
 
 	clonedResults := clone.CloneRepos(candidateRepos)
