@@ -1,11 +1,14 @@
-import { Card, CardContent } from "@/components/card";
+/*import { Card, CardContent } from "@/components/card";
 
-interface ResultCardProps {
-  repoUrl: string;
-  similarity: number;
+interface SampleResultCardProps {
+    Repo: string
+    RepoUrl: string,
+    TokenSimilarity: number,
+    MetricsSimilarity: number,
+    ASTSimilarity: number
 }
 
-const ResultCard = ({ repoUrl, similarity }: ResultCardProps) => {
+const SResultCard = ({ repoUrl, similarity }: SampleResultCardProps) => {
   const getSimilarityColor = (score: number) => {
     if (score >= 80) return "text-destructive";
     if (score >= 60) return "text-orange-400";
@@ -34,4 +37,4 @@ const ResultCard = ({ repoUrl, similarity }: ResultCardProps) => {
   );
 };
 
-export default ResultCard;
+export default SResultCard;*/

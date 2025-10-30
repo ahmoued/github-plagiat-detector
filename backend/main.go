@@ -110,23 +110,7 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Println(candidateRepos)
 
 
-	//readmes := searchgithub.FetchReadmes(client, candidateRepos, "")
 
-
-	//minOverlap := 2
-    //filteredRepoKeys := utils.FilterReposByReadme(readmes, keywords, minOverlap)
-
-
-	/*filteredRepos := []searchgithub.RepoInfo{}
-    keySet := make(map[string]struct{})
-    for _, key := range filteredRepoKeys {
-        keySet[key] = struct{}{}
-    }
-    for _, r := range candidateRepos {
-        if _, ok := keySet[r.Owner+"/"+r.Name]; ok {
-            filteredRepos = append(filteredRepos, r)
-        }
-    }*/
 
 
 	clonedResults := clone.CloneRepos(candidateRepos)
@@ -173,6 +157,13 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
         fmt.Printf("%s → %.2f%%\n", r.Repo, r.Similarity)
     }
 
+    repoURLMap := make(map[string]string)
+    for _, r := range candidateRepos {
+        repoURLMap[r.Name] = r.CloneURL
+    }
+    fmt.Println("repourlmap")
+    fmt.Println(repoURLMap)
+    fmt.Println("repourlmapdone")
 
     combinedResults := []compare.CompareResultWithMetrics{}
     for _, r := range results {
@@ -185,9 +176,10 @@ func compareHandler(w http.ResponseWriter, r *http.Request) {
         }
         combinedResults = append(combinedResults, compare.CompareResultWithMetrics{
             Repo:              r.Repo,
+            RepoUrl:           repoURLMap[r.Repo],
             TokenSimilarity:   r.Similarity,
             MetricsSimilarity: metricSim,
-            ASTSimilarity:     -1.0, // Default: not computed
+            ASTSimilarity:     -1.0,
         })
     }
 
