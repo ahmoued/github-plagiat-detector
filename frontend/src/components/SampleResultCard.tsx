@@ -1,18 +1,19 @@
-// ...existing code...
+
 import { ExternalLink, GitFork, Star } from "lucide-react";
 import { Card, CardContent } from "@/components/card";
 import { Badge } from "@/components/badge";
 
 interface ResultCardProps {
-  repo_url: string;
+  repo_url?: string;
   similarity: number;
   stars: number;
   forks: number;
   keywords: string[];
   description: string;
-  token_similarity: number;
-  metrics_similarity: number;
-  ast_similarity: number;
+  token_similarity?: number;
+  metrics_similarity?: number;
+  ast_similarity?: number;
+  onClick?: () => void;
 }
 
 const ResultCard = ({
@@ -25,6 +26,7 @@ const ResultCard = ({
   token_similarity,
   metrics_similarity,
   ast_similarity,
+  onClick,
 }: ResultCardProps) => {
   const getsimilarityColor = (score: number) => {
     const s = Number.isFinite(score) ? score : 0;
@@ -37,11 +39,21 @@ const ResultCard = ({
     return Number.isFinite(v as number) ? `${Math.round(v as number)}%` : "—";
   };
 
-  const safeUrl = typeof repo_url === "string" && repo_url.trim() !== "" ? repo_url.trim() : undefined;
-  const displayName = safeUrl ? safeUrl.split("/").slice(-2).join("/") : "unknown/unknown";
+  const safeUrl =
+    typeof repo_url === "string" && repo_url.trim() !== ""
+      ? repo_url.trim()
+      : undefined;
+  const displayName = safeUrl
+    ? safeUrl.split("/").slice(-2).join("/")
+    : "unknown/unknown";
 
   return (
-    <Card className="group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br from-card to-card/50 border-border/50">
+    <Card
+      onClick={onClick}
+      className={`group hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 hover:-translate-y-1 bg-gradient-to-br from-card to-card/50 border-border/50 ${
+        onClick ? "cursor-pointer" : ""
+      }`}
+    >
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
@@ -54,11 +66,15 @@ const ResultCard = ({
               {displayName}
               <ExternalLink className="w-4 h-4 opacity-0 group-hover/link:opacity-100 transition-opacity" />
             </a>
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{description}</p>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {description}
+            </p>
           </div>
 
           <div className="ml-4 text-right">
-            <div className={`text-4xl font-bold ${getsimilarityColor(similarity)}`}>
+            <div
+              className={`text-4xl font-bold ${getsimilarityColor(similarity)}`}
+            >
               {Math.round(Number.isFinite(similarity) ? similarity : 0)}%
             </div>
             <p className="text-xs text-muted-foreground">overall similarity</p>
@@ -105,4 +121,4 @@ const ResultCard = ({
 };
 
 export default ResultCard;
-// ...existing code...
+
