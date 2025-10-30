@@ -22,7 +22,7 @@ type CompareResult struct {
 type CompareResultWithMetrics struct {
     Repo       string  `json:"repo"`
     RepoUrl     string  `json:"repo_url"`
-    TokenSimilarity float64 `json:"similarity"`
+    TokenSimilarity float64 `json:"token_similarity"`
     MetricsSimilarity float64 `json:"metrics_similarity"`
     ASTSimilarity float64 `json:"ast_similarity"`
 
